@@ -46,11 +46,11 @@ The class “rgba_color” is the primary class involved in handling colours in 
 
 The class has two constructors, one which takes floating point values between 0 and 1, and another which takes integral values between 0 and 255, both in linear colour. This might seem reasonable at first glance, with the caveat that integer linear colour is very rarely what you want
 
-The real problem comes in that most developers, especially beginners, have no idea about the difference between linear colour and sRGB. Because 8-bit per channel integer linear colour isn’t a very useful format, the internet and other sources use the sRGB colour space to specify commonly used colours - eg “antique white” is 250, 235, 215, defined in the sRGB colour space
+The real problem comes in that most developers, especially beginners, have no idea about the difference between linear colour and sRGB. Partly 8-bit per channel integer linear colour isn’t a very useful format (and partly due to convention), the internet and other sources use the sRGB colour space to specify commonly used colours - eg “antique white” is 250, 235, 215, defined in the sRGB colour space
 
 The authors of this proposal fall into this exact trap by using the integer constructor to input sRGB constants - so as specified, all the colour constants in the paper are incorrect if rgba_color is truly intended to be linear colour. This is exacerbated by a lack of strong typing around colours, and a lack of API design around colour spaces at all. There is no built in support for explicitly disambiguating between sRGB and linear colour
 
-That said, it is not entirely clear how rgba_color is intended to be used. All practical usages of the class seem to imply that it stores sRGB data, including this proposal, as well as the reference implementation which uses a non linear RGB colour space in the implementation when handling colours. However, the class provides an operator* which cannot be used on sRGB data correctly, and gradients specify linear interpolation between colours which is incorrect for sRGB data, with the reference implementation making further mistakes
+That said, it is not entirely clear how rgba_color is intended to be used. All practical usages of the class seem to imply that it stores sRGB data, including this proposal, as well as the reference implementation which uses a non linear RGB colour space in the implementation when handling colours. However, the class provides an operator\* which [cannot be used on sRGB data correctly](#fsaturation), and gradients specify linear interpolation without colour space conversions which is incorrect for sRGB data, with the reference implementation making further mistakes
 
 These are all very common errors that are made when it comes to linear colour vs sRGB (see [[#miscerrors]] for further mistakes)
 
@@ -72,15 +72,35 @@ Unfortunately, this proposal does not propose a vector type with which to base b
 
 When a future more complete vector type appears which is necessarily very different due to parameterisation, we then may well end up with 3 different incompatible vector apis in the standard that users have to write code for if they want their code to be flexible, rather than the expected number which is 1. The class basic_matrix_2d also suffers from genericity issues, with hardcoded accessor properties, which results in similar problems with future matrix types. It is additionally currently not possible to write generic templated code that accepts both basic_point_2d and rgba_color without duplication, for no reason
 
+operator\* is also very confusing. It saturates, meaning that it does not store values > 1, but also does not allow multiplication by any values > 1 or < 0. Additionally, it overloads on float and int to define int multiplication as /255.f, the combined sum of which is best illustrated in the following code sample
+
+```C++
+rgba_color some_col(0, 0.3, 0.5, 1); // illustrative example
+
+rgba_color col1 = some_col * 255; // gives 0, 0.3, 0.5, 1
+//rgba_color col2 = some_col * 255.; // not allowed
+
+rgba_color col3 = some_col * 2; // gives 0, 0.0024, 0.0039, 0.0078
+//rgba_color col4 = some_col * 2.; // not allowed
+
+rgba_color col5 = (some_col * 2) * 0.5; // gives 0, 0.0012, 0.002, 0.0039
+//rgba_color col6 = (some_col * 2.) * 0.5; // not allowed
+
+//rgba_color col7 = some_col * (4 * 0.5); // not allowed
+rgba_color col8 = (some_col * 4) * 0.5; // gives 0, 0.0024, 0.0039, 0.0078
+```
+
+This is very unintuitive behaviour. It encourages users to mix integer and floating point types to get correct behaviour, and breaks commutivity
+
 ## Already Widely Misused ## {#widelymisued}
-The current ad-hoc approach to designing these types and lack of library fundamentals is likely why rgba_color in particular is so easy to misuse. Colour is near universally mishandled across many open source libraries, but it is particularly disappointing that these mistakes might be cemented into C++ solely as a result of insufficient API design. Users will likely treat rgba_color as a black box due to its lack of useful API, input sRGB data instead into a traditional vector class not designed for colour management, perform incorrect maths on it, and then incorrectly convert to rgba_color at the end ignoring any potentially safer constructors that might be introduced
+The current ad-hoc approach to designing these types and lack of library fundamentals is likely why rgba_color is so easy to misuse. Colour is near universally mishandled across many open source libraries, but it is particularly disappointing that these mistakes might be cemented into C++ solely as a result of insufficient API design. Users will likely treat rgba_color as a black box due to its lack of useful API, input sRGB data instead into a traditional vector class not designed for colour management, perform incorrect maths on it, and then incorrectly convert to rgba_color at the end ignoring any potentially safer constructors that might be introduced. operator\* also has a particularly odd design, and seems extremely error prone
 
-While these issues might seem theoretical or improbable, there are already real world examples of how much trouble this class could wreak. For an explicit case of how deficient the rgba_color class is in practice, the complexities of linear colour management, and the importance of strong typing: the reference implementation is entirely incorrect with how it handles colours, and produces wrong output in a wide variety of cases across 3 separate backends, all implemented by different people. Precise details are provided at the end of this paper under [[#miscerrors]] to avoid sidetracking, but the above issues ring extremely true in currently available code
+While these issues might seem theoretical or improbable, there are already real world examples of how much trouble this class could cause. For an explicit case of how deficient the rgba_color class is in practice, the complexities of linear colour management, and the importance of strong typing: the reference implementation is entirely incorrect with how it handles colours, and produces wrong output in a wide variety of cases across 3 separate backends, all implemented by different people. Precise examples are provided at the end of this paper under [[#miscerrors]] to avoid sidetracking, but the above issues ring extremely true in currently available code
 
-The argument that any minimal type is necessary and sufficient for this proposal to be able to move forward is therefore not compelling here - ad-hoc specification will make the life of future programmers more difficult due to lack of foresight on difficult technical problems, resulting in a type like rgba_color which is actively harmful in its current form, which even further may be accidentally being designed to fulfill a use case that it is not correct or intended for (storing sRGB data). This type needs proper thought put into its APIs, and functions, to prevent exactly the problems which are already prevalent with rgba_color in practice. An acceptable rgba_color would necessarily look very different to the type currently specified, with a large rethink necessary to prevent these issues
+The argument that any minimal type is necessary and sufficient for this proposal to be able to move forward is therefore not compelling here - ad-hoc specification will make the life of future programmers more difficult due to lack of foresight on difficult design problems, resulting in a type like rgba_color which is actively harmful in its current form, which even further may be accidentally being designed to fulfill a use case that it is not correct or intended for (storing sRGB data). This type needs proper thought put into its APIs, and functions, to prevent exactly the problems which are already prevalent with rgba_color in practice. An acceptable rgba_color would necessarily look very different to the type currently specified, with a large rethink necessary to prevent these issues and breaking API changes
 
 ## Long Hidden Issues In Plain Sight ## {#defect-full}
-There are a number of defects identified that have hidden in plain sight, seemingly for multiple years. It is surprising and concerning that none of these have been spotted before now
+There are a number of defects identified surrounding the handling of colours that have hidden in plain sight, seemingly for multiple years. It is surprising and concerning that none of these have been spotted before now
 
 ### Technical Defects ### {#technicaldefects}
 1. Incorrect colour constants
@@ -89,10 +109,12 @@ There are a number of defects identified that have hidden in plain sight, seemin
 ### Problematic Design ### {#designissues}
 1. Ambiguously colour spaced constructors. Having unnamed constructors is probably a bad idea overall
 2. Integer linear constructor particularly is a beginner trap
-3. No strong typing or signposting for colour spaces to common avoid linear vs sRGB errors
-4. No functions to convert from or to sRGB, which are necessary given the ubiquitousness of sRGB
-5. Lack of useful features encourages the use of less appropriate classes
-6. Lack of interoperability with basic_point_2d, and likely future vector types
+3. operator\* has very peculiarly overloaded behaviour on int and float
+4. operator\* saturates, which is surprising, particularly in combination with the above
+5. No strong typing or signposting for colour spaces to common avoid linear vs sRGB errors
+6. No functions to convert from or to sRGB, which are necessary given the ubiquitousness of sRGB
+7. Lack of useful features encourages the use of less appropriate classes
+8. Lack of interoperability with basic_point_2d, and likely future vector types
 
 ### Reference Implementation Defects ### {#referencedefects}
 1. Blending is incorrectly performed in sRGB 
@@ -153,7 +175,7 @@ The problem is that batching is not a singular concept. A member of the SFML tea
 
 [TODO: GET QUOTES FROM SFML STAFF INSTEAD OF COPYPASTING STUFF OFF THE FORUMS]
 
-Skia is a notable example of a library that tries to automatically fully batch as much as possible and is very explicitly designed to take advantage of this. Even in the case of [Skia](https://blogs.igalia.com/elima/tag/skia/), API limitations still result in batching being [difficult](https://gist.github.com/pcwalton/33bd1049d6e3b686d59fbba76fc3575a). There are further evolving technologies such as WebRender that attempt to have better APIs for better performance, but it would be potentially unwise to attempt an API redesign off something so recent. APIs with limited and specific scope like Dear ImGui, a C++ UI toolkit, are able to fully automatically batch effectively. In the case of Dear ImGui, it does not expose a manual batching API as part of [normal](#imguibatch) user code as it is unnecessary
+Skia is a notable example of a library that tries to automatically fully batch as much as possible and is very explicitly designed to take advantage of this. Even in the case of [Skia](https://blogs.igalia.com/elima/tag/skia/), API limitations still result in batching being [difficult](https://gist.github.com/pcwalton/33bd1049d6e3b686d59fbba76fc3575a), for a similar reason in that automatic batching is difficult in the general case. There are further evolving technologies such as WebRender that attempt to have better APIs for better performance, but it would be potentially unwise to attempt an API redesign off something so recent. APIs with limited and specific scope like Dear ImGui, a C++ UI toolkit, are able to fully automatically batch effectively. In the case of Dear ImGui, it does not expose a manual batching API as part of [normal](#imguibatch) user code as it is unnecessary
 
 So while it is possible to fully batch automatically to some degree, it is not necessarily a full solution even if the API is well designed, for 2D graphics libraries. SFML and other more traditional graphics/media APIs instead solve this by providing an explicit api for submitting batched draw calls or vertex lists, which now brings us to the issue of safety
 
@@ -164,11 +186,11 @@ GPU’s in OpenGL and DirectX implementations by and large do not benefit from m
 
 Other batched rendering apis do not suffer from these issues. SFML for example provides a straightforward batched rendering api equivalent (through vertex lists) that largely provides the performance benefits of batching with no unsafety
 
-This unsafety stems from a fairly fundamental issue with the proposal. APIs like SFML provide CPU objects which construct vertex lists (or equivalents), that can be obtained by the end user. Eg, sf::RectangleShape builds the vertices necessary to render a rectangle on a GPU, and then you can query the individual vertices with object.getPoint(index). This means that you can batch the code fairly straightforwardly yourself, collecting the necessary vertex information and state information, and then submit it all to the GPU as one command. Because this is performed by the programmer explicitly, there are no hidden costs that need to be hidden asynchronously by the implementation and the implementation does no expensive bookkeeping. A separate CPU and GPU design without fully automatic batching negates this need for hidden implicit threads
+This unsafety stems from a fairly fundamental issue with the proposal. APIs like SFML provide CPU objects which construct vertex lists (or equivalents), that can be obtained by the end user. Eg, sf::RectangleShape builds the vertices necessary to render a rectangle on a GPU, and then you can query the individual vertices with object.getPoint(index). This means that you can batch the code fairly straightforwardly yourself, collecting the necessary vertex information and state information, and then submit it all to the GPU as one command. Because this is performed by the programmer explicitly, there are no hidden costs that need to be hidden asynchronously by the implementation and the implementation does no expensive bookkeeping. A separate CPU and GPU design without fully automatic batching negates any need for hiding costs
 
 Schemes like in this proposed API must do some kind of hidden processing on the data to determine which commands can be grouped together which can be expensive. This threading workaround potentially requires multiple mutexes (implementation and user facing), context switches (both thread switches, and backends like OpenGL), provides a future to tell you when the work has completed (must query state from the backend, this is not free!), all of which which can be very expensive, not to mention unsafe, and complex to get right for consumers of the library. There isn’t a compelling upside to this specification, but it is somewhat necessary due to the high level API design issue
 
-Software renderers do not benefit from batching in the same fashion as hardware renderers as well. This is another good example of where proper separation between CPU and GPU could lead to two, much more task specific APIs that correctly define their own use case, with unsafety only absolutely where necessary
+Software renderers do not benefit from batching in the same fashion as hardware renderers on top of this. This is another good example of where proper separation between CPU and GPU could lead to two, much more task specific APIs that correctly define their own use case, with unsafety only absolutely where necessary
 
 As-is, a single API needs to support too many use cases - explicit + implicit batching, mixed software rendering + hardware rendering, with hidden implicit threads - and it gives unnecessary beginner unfriendly data races and poorer performance as the result. This is a sign of problems with the overall API design, as well as the goal of being fully automatically batched in the first place. This unsafety to get performance, however, leads to further problems
 
@@ -252,7 +274,9 @@ This section is related to errors with the proposal that I found incidentally wh
 
 * It is not clear if the fixed refresh rate mode takes into account the case where draw callbacks take longer than the time between frames. The wording looks like either it does not handle that case correctly, or that it neglects the time it takes for a draw callback itself to execute
 
-* The paper uses std::function for its callback types. While this isn’t a dealbreaker or necessarily incorrect as such, it does seem unnecessarily heavy when comparable libraries do not suffer from this overhead. Low overhead C-style callback driven libraries (eg GLFW) tend to be trickier to use due to void* pointers or global state - whereas an event queue system like SFML or SDL maps well to the underlying model, provides almost no overhead, and is very safe. This requires a major redesign of the graphics proposal, but this paper is proposing a major redesign anyway
+* The paper uses std::function for its callback types. While this isn’t a dealbreaker or necessarily incorrect as such, it does seem unnecessarily heavy when comparable libraries do not suffer from this overhead. Low overhead C-style callback driven libraries (eg GLFW) tend to be trickier to use due to void* pointers (which this proposal also seems to contain, under run_function) or global state - whereas an event queue system like SFML or SDL maps well to the underlying model, provides almost no overhead, and is very safe. This requires a major redesign of the graphics proposal, but this paper is proposing a major redesign anyway
+
+* `constexpr rgba_color& operator*(U lhs, const rgba_color& rhs) noexcept;` should be `constexpr rgba_color operator*(U lhs, const rgba_color& rhs) noexcept;`, a similar very minor error is made with `constexpr rgba_color& operator*(const rgba_color& lhs, U rhs) noexcept;`
 
 # Footnotes # {#footnotes}
 
@@ -265,3 +289,7 @@ Friendly APIs are generally blocking as well, because a true asynchronous API (e
 ## Dear ImGui ## {#imguibatch}
 
 Dear ImGui however does provide an interface that can be used for batching, by exposing its internal APIs. This is intended for custom or more advanced rendering, and is not necessary in code which just utilises ImGui's normal functionality
+
+## operator* ## {#fsaturation}
+
+It is tempting to think that operator\* could be used to convert between a 0 -> 1 format, and a 0 -> 255 format. The current proposal specifies than operator\* *saturates*, that is, rgba_color can never store a value > 1 in its components. For other transforms that one might do with operator\* like multiplying by 0.9, it is incorrect to use on sRGB data if it was actually intended to store sRGB
