@@ -1,0 +1,267 @@
+<pre class='metadata'>
+Title: 2D Graphics Review
+Shortname: None
+Revision: 0
+Status: iso/P
+Group: WG21
+URL: none
+Editor: Myself
+Date: 2019-10-22
+No abstract: true
+Markup Shorthands: markdown yes
+</pre>
+
+[this version of the document is intended to have all of its facts and arguments straight. TODO: references, appendix/footnotes, formatting, get a quote out of the SFML team]
+
+# Abstract # {#abstract}
+This document aims to review portions of the proposed 2D graphics standard P0267R10, and focuses particularly on its handling of colours, linear algebra, and high level API design. There are a number of major API design faults and minor technical faults present in the proposal currently, which hamper future functionality, and more concerningly it is likely actively harmful to teach to beginners who are unfamiliar with 2D graphics. The overall high level problems with the proposal are best highlighted by technical defects within the proposal and reference implementation made as a result of these high level problems. This document is aimed at people who do not have any background in computer graphics but want to understand the issues in depth, and presents a different starting point for jumping off with a future graphics initiative
+
+# Background Information #  {#back}
+## Colours ## {#col}
+There are two relevant methods for how you might store a specific colour - [linear colour](https://www.kinematicsoup.com/news/2016/6/15/gamma-and-linear-space-what-they-are-how-they-differ), and [sRGB](https://en.wikipedia.org/wiki/SRGB). The short version is - linear colour is suitable for doing maths on, and sRGB is not. Linear colour is not something you put on a display, whereas sRGB is. Mixing up which kind of colour you are using is a very common error in graphics - many libraries fail to handle this correctly, and this leads to incorrect output. Even further, due to the prevalence of incorrectness, some technologies like CSS [deliberately](https://blackhole12.com/blog/everyone-does-srgb-wrong-because/) handle linear colour incorrectly 
+
+Most colour data that users will plug into a program (eg googling colour values) is in sRGB - linear colour is not generally used as a human consumable format. Importantly, you cannot exactly map 8 bit linear colour to 8 bit sRGB in a way that does not produces holes in your colour output, so this won’t change anytime soon. Generally any unspecified triplet of integer values that a user inputs is sRGB
+
+It is important to note that the meaningful distinction between linear colour and sRGB is not an optional concept. Not handling this isn’t lacking a feature, it is incorrect in a major way
+
+## Origins ## {#orig}
+The API is largely based on Cairo, and a reference implementation for this proposed standard is available over here [https://github.com/cpp-io2d/P0267_RefImp](https://github.com/cpp-io2d/P0267_RefImpl)
+
+## GPU Architecture ## {#gpuarch}
+GPU’s operate largely in a pipelined fashion. This is essentially a queue of commands - keeping this queue not empty is essential for performance, as is using the queue asynchronously. Blocking, synchronous commands like data transfers are bad for performance, in particular reads from the GPU to the CPU. While GPU’s are massively parallel machines with conceptually thousands of threads, the submission of commands to a GPU is largely a single threaded affair. There are specific use cases where multithreading is useful to performance, as in the DX12/Vulkan/Mantle/Metal apis, but this is out of scope for both this paper, and the design goals of the 2D graphics proposal in general
+
+## Batching ## {#batch}
+There is a non trivial amount of overhead in issuing any GPU command. For getting the best performance, multiple commands can be merged together into one larger command. This isn’t something that can be done unconditionally - the ability to ‘batch’ commands together is determined by certain constraints
+
+SFML/SDL/Allegro/Cairo and most other libraries do not fully automatically batch commands together - either intentionally, or due to difficulty implementing a fully automatic batching system and API problems (eg Skia). Dear ImGui is an example of a library that is largely able to fully auto batch for performance, due to its specific use case for rendering GUIs and its API design. [SDL batches internally](https://www.patreon.com/posts/project-sdl-21856507) where it is able, but relies on the end user structuring their data in such a way that it can take advantage of this (eg constructing a sprite atlas)
+
+To clarify terminology: I am using batching to refer to any scheme by which multiple independent GPU commands might be merged together (eg vertex lists in SFML, which are not strictly batching, but function similarly and fulfill a similar use case), automatic batching to refer to the implementation making relatively simple decisions about which content to merge (eg as in SDL), and fully automatic batching to refer to an implementation which is able to make enough decisions about merging content together that manual batching is unnecessary in the general case, without having to make large code modifications to make it work. The proposal being looked at is proposing a fully automatically batched scheme under this terminology, as manual batching is not a high priority and the authors expect good performance without any manual batching
+
+## Document Scope ## {#scope}
+I have only reviewed things about which I have experience with, with respect to this proposal, which are: Colour management, graphics apis, linear algebra, font rendering, and performance
+
+# Colour Management # {#colmanage}
+## rgba_color ## {#rgba_color}
+The class “rgba_color” is the primary class involved in handling colours in this proposal. This class is specified by the proposal to be in linear colour (here called the RGBA color model). “Color models are often termed linear while color spaces are often termed gamma corrected” defines colour models as being linear, and colour spaces as being non linear, with this class going on to be defined as “using the RGBA color model”
+
+The class has two constructors, one which takes floating point values between 0 and 1, and another which takes integral values between 0 and 255, both in linear colour. This might seem reasonable at first glance, with the caveat that integer linear colour is very rarely what you want
+
+The real problem comes in that most developers, especially beginners, have no idea about the difference between linear colour and sRGB. Because 8-bit per channel integer linear colour isn’t a very useful format, the internet and other sources use the sRGB colour space to specify commonly used colours - eg “antique white” is 250, 235, 215, defined in the sRGB colour space
+
+The authors of this proposal fall into this exact trap by using the integer constructor to input sRGB constants - so as specified, all the colour constants in the paper are incorrect if rgba_color is truly intended to be linear colour. This is exacerbated by a lack of strong typing around colours, and a lack of API design around colour spaces at all. There is no built in support for explicitly disambiguating between sRGB and linear colour
+
+That said, it is not entirely clear how rgba_color is intended to be used. All practical usages of the class seem to imply that it stores sRGB data, including this proposal, as well as the reference implementation which uses a non linear RGB colour space in the implementation when handling colours. However, the class provides an operator* which cannot be used on sRGB data correctly, and gradients specify linear interpolation between colours which is incorrect for sRGB data, with the reference implementation making further mistakes
+
+These are all very common errors that are made when it comes to linear colour vs sRGB (see [[#miscerrors]] for further mistakes)
+
+## Linear Colour vs sRGB in the API ## {#linsrgb}
+To follow on from the above example, a pertinent question to then ask is: why does the computer graphics industry use linear colour at all? What is the purpose if it adds complexity without actually doing anything - couldn’t you just convert all your sRGB constants to linear colour under the hood when we get to the actual rendering bit (a potentially valid approach) and use sRGB everywhere?
+
+The sole purpose of linear colour generally is that doing mathematical operations on the colours does the correct thing. Averaging two linear colours is perfectly fine, whereas averaging two sRGB colours will give an incorrect result - sRGB should be treated as a black box for all intents and purposes. It is therefore particularly desirable to use linear colour in API types, because it guarantees that any mathematical operations done by users will be correct (eg linear interpolation, a very common operation on colours that is commonly performed incorrectly)
+
+Using linear colour as the exposed API type is definitely a sensible choice overall, with the caveat that humans don’t tend to consume linear colours - which necessitates that appropriate (currently lacking) safeguards should be put in place to make it hard for users to input sRGB triples where linear colours are expected. Defining the use of linear colour everywhere means that you always know what your colour space is, and you can always perform correct colour operations without expensive colour space conversions. It would also be ideal if rgba_color could provide common vector operations, as fundamentally they are correct and useful for the type as specified
+
+While so far this might seem simply like the proposal is missing a few things then and that it could be easily rectified with extensions and fixes, this is where the real problems with the proposal set in. The above issues are fixable, but the below issues become increasingly fundamental
+
+#  Vocabulary Types # {#vocab}
+As it stands, the class “rgba_color” has some problems with it. Outside of this proposal, linear RGB colour is in practice a 3-4 component proper vector type, with a rich set of functions and a full set of operators, parameterised, and preferably strongly typed with respect to colour spaces (linear colour vs sRGB at minimum, and potentially HSL if supported etc)
+
+The other vector type present in the standard is basic_point_2d, which in an ideal world would also be a fully featured vector class. Its functionality *should* largely overlap with that of rgba_color - most mathematical operations should be expressible on both of them, with the benefit that type safety could restrict some operations to only the types that benefit from them
+
+Unfortunately, this proposal does not propose a vector type with which to base basic_point_2d and rgba_color on. Making the changes necessary to these classes to base them on proper vector types and provide useful vocabulary types post-hoc would result in breaking changes, which means that once these are standardised in their current temporary form, they’ll persist while being insufficient. In their current form additionally, almost all specified operations should be duplicated between them as both are suitable for any provided vector functionality
+
+When a future more complete vector type appears which is necessarily very different due to parameterisation, we then may well end up with 3 different incompatible vector apis in the standard that users have to write code for if they want their code to be flexible, rather than the expected number which is 1. The class basic_matrix_2d also suffers from genericity issues, with hardcoded accessor properties, which results in similar problems with future matrix types. It is additionally currently not possible to write generic templated code that accepts both basic_point_2d and rgba_color without duplication, for no reason
+
+## Already Widely Misused ## {#widelymisued}
+The current ad-hoc approach to designing these types and lack of library fundamentals is likely why rgba_color in particular is so easy to misuse. Colour is near universally mishandled across many open source libraries, but it is particularly disappointing that these mistakes might be cemented into C++ solely as a result of insufficient API design. Users will likely treat rgba_color as a black box due to its lack of useful API, input sRGB data instead into a traditional vector class not designed for colour management, perform incorrect maths on it, and then incorrectly convert to rgba_color at the end ignoring any potentially safer constructors that might be introduced
+
+While these issues might seem theoretical or improbable, there are already real world examples of how much trouble this class could wreak. For an explicit case of how deficient the rgba_color class is in practice, the complexities of linear colour management, and the importance of strong typing: the reference implementation is entirely incorrect with how it handles colours, and produces wrong output in a wide variety of cases across 3 separate backends, all implemented by different people. Precise details are provided at the end of this paper under [[#miscerrors]] to avoid sidetracking, but the above issues ring extremely true in currently available code
+
+The argument that any minimal type is necessary and sufficient for this proposal to be able to move forward is therefore not compelling here - ad-hoc specification will make the life of future programmers more difficult due to lack of foresight on difficult technical problems, resulting in a type like rgba_color which is actively harmful in its current form, which even further may be accidentally being designed to fulfill a use case that it is not correct or intended for (storing sRGB data). This type needs proper thought put into its APIs, and functions, to prevent exactly the problems which are already prevalent with rgba_color in practice. An acceptable rgba_color would necessarily look very different to the type currently specified, with a large rethink necessary to prevent these issues
+
+## Long Hidden Issues In Plain Sight ## {#defect-full}
+There are a number of defects identified that have hidden in plain sight, seemingly for multiple years. It is surprising and concerning that none of these have been spotted before now
+
+### Technical Defects ### {#technicaldefects}
+1. Incorrect colour constants
+2. The definition of premultiplied alpha is incorrect (sRGB data must be linearised first)
+
+### Problematic Design ### {#designissues}
+1. Ambiguously colour spaced constructors. Having unnamed constructors is probably a bad idea overall
+2. Integer linear constructor particularly is a beginner trap
+3. No strong typing or signposting for colour spaces to common avoid linear vs sRGB errors
+4. No functions to convert from or to sRGB, which are necessary given the ubiquitousness of sRGB
+5. Lack of useful features encourages the use of less appropriate classes
+6. Lack of interoperability with basic_point_2d, and likely future vector types
+
+### Reference Implementation Defects ### {#referencedefects}
+1. Blending is incorrectly performed in sRGB 
+2. rgba_color is widely misused
+3. The internal implementation uses sRGB as its colour space
+4. Most of the test data is incorrect due to sRGB blending, and appears to be testing the implementation against its own output
+5. Premultiplied alpha is implemented incorrectly
+
+Proper linear colour handling is one of the few fields where I consider myself to be relatively technically competent due my experience working on subpixel font rendering and game engines, and is one of the areas of this proposal I was most expertly able to review. I would consider it likely that there are other issues in this standard that I am not able to find due to a lack of technical expertise in other areas of this proposal
+
+# The Wider Graphics API # {#graphicsapi}
+The above sections focus on the linear algebra section of the library, and from here on will now focus on the actual graphics API itself
+
+## 2D Graphics APIs in Practice ## {#alternatives}
+The main bulk of the comparisons here will be to equivalent libraries such as SDL and SFML, both very widely used 2D graphics libraries that have a long history of game development and interactive applications. SFML is explicitly aimed at beginners to graphics programming and is generally considered a high quality C++ library, whereas SDL is a C library with a longer history behind it, and is virtually the standard for cross platform graphics applications. Both are widely used, and provide largely everything that the goals of the 2D graphics proposal intended to meet. SFML does not provide a software renderer, whereas SDL provides both a software and hardware renderer. While SFML can be somewhat limited in functionality for experts (but still provides extremely adequate facilities), SDL in particular successfully services the entire industry from beginner to expert
+
+Cairo by comparison, the library that this proposed API is based on, is fundamentally designed as a software renderer, which means that much of its API is based on that assumption - hardware acceleration for Cairo is considered experimental, and it is important to understand it through this light. Many applications have moved away from Cairo due to fundamental performance limitations, and it is not used for game development at all, not even at an extreme beginner level. It also does not provide any solution for input, unlike alternatives
+
+### Hardware Acceleration ### {#hacc}
+It is extremely important to note that while Cairo is ‘hardware accelerated’, this is a rather broad term that does not mean what most people might think - the reality is that only portions of the Cairo implementation are fully hardware accelerated on some backends, in large due to the API constraints of Cairo itself. It is not clear that it is possible for Cairo or this proposal to be fully hardware accelerated, and given the prior difficulties in accomplishing this in Cairo, as well as the additional factor of the industry at large moving away from this API due to precisely this problem, it should not be considered a given until it has been done
+
+## Existing Alternative Practice in API Design ## {#alternativepractice}
+Fundamentally, both SFML and SDL have very clear concepts of where resources live (CPU vs GPU), separating them into different types eg the sf::Image type for CPU resources, and the sf::Texture type for GPU resources. SDL_Surface and SDL_Texture are analogous types in SDL
+
+A common workflow in 2D libraries goes as such: Create an object that’s stored on the CPU, load or create your asset, write it to the GPU once, then use that GPU object repeatedly. Users are free to modify data when its stored on the CPU through conventional methods, and transfers to and from the GPU are generally obvious. While neither library provides the ability to do [proper](#async) asynchronous or high performance gpu data transfers, the reality is that it is easy to distinguish as an end user whether an operation will be fast or slow
+
+The proposal as currently stated runs into a double whammy of both performance, and functionality issues, mainly due to a lack of equivalent separation between CPU, and GPU types
+
+## Performance Limitations ## {#performance}
+There is no clear distinction between the CPU and GPU in the 2D Graphics proposal, which means that you cannot control when and where the API performs undesirable behaviour, leaving end users to dig through their particular standard library implementation in the event that their application performs poorly. This will likely manifest as intermittent, hard to fix stuttering, particularly on backends which are only partially hardware accelerated
+
+The classes basic_brush and basic_image_surface (as well as others) build precisely on this API design issue. These classes have no concept of separation between CPU and GPU. For basic_brush, this class may well be a hidden performance trap - while you might think that creating it is cheap, a basic brush which lives on a backend implemented on a GPU will involve writes and hardware API calls, which are definitely not free
+
+A partially hardware accelerated backend might additionally stall the GPU pipeline at points uncontrollable by the end user due to this lack of distinction, resulting in unacceptable performance even in very simple scenes for certain kinds of tasks, while hidden data transfers occur between the hardware accelerated and software portions of the implementation. This is a common problem in APIs like Cairo
+
+## Functionality Limitations ## {#functionality}
+Much more importantly, this lack of CPU and GPU distinction limits what functionality the proposal is able to express to the user. For example, SFML freely allows you to cheaply modify raw pixel data in an sf::Image - which can be useful for applying transforms, or simple drawing. This only has exactly the cost you would expect. Raw pixel modification is a basic feature of most 2D graphics libraries, and is extremely useful in a variety of situations
+
+The class basic_image_surface however has no concept of CPU or GPU, only an external API which the implementation must conform to, which internally could be anything. This makes it difficult to standardise features that are basic in other libraries like reading and modifying raw pixel data, because the semantics of how that might work in the API are difficult to uniformly standardise across both a CPU and a GPU. A GPU object would need to perform a very expensive readback and cannot allow direct pixel access (read -> modify -> write), whereas a CPU object would be free to provide direct pixel access. Batched hardware implementations might need to block entirely up to that point, creating hard to explain performance traps, or expose a complex asynchronous API. Additionally, the current wording of the proposal means that there may additionally be hidden format conversions, further complicating the issue. Unifying all these constraints under one device agnostic API is challenging, and will likely result in an unnecessarily complex, unsafe, non performant, hard to use API
+
+### Already A Problem ### {#aap}
+As an example of functionality already restricted by this API design issue, external surface modification used to be supported by a relatively complex mechanism in old versions of the standard, and has since been removed. There is now no standardised method for doing this, and the authors recommend using non standardised behaviour for achieving this functionality. It seems very likely that this is due to API and performance difficulties, resulting from a lack of clear separation between CPU and GPU types
+
+In general, it is very desirable in an API to explicitly separate out these two concepts and their interaction, and it is a significant design issue that this is not the case. This is leading to basic functionality like direct pixel access being significantly hard to standardise in this proposal, but would be straightforward to standardise in APIs which provide separate concepts of CPU and GPU types. APIs with separate CPU and GPU types cannot also reasonably suffer from partial hardware acceleration, and so provide much more predictable performance, while still being able to offer easy simultaneous software and hardware rendering (eg SDL) if this is considered desirable
+
+# Performance, Safety, and API Usability # {#perfutility}
+## Fully Automatic Batching ## {#fullyautomaticbatching}
+Performance in a 2D graphics library is often played down, with it being deemed unnecessary that beginners might want to render large numbers of objects, but there is reason to believe that the API as a whole might not be well implementable in the general case
+
+Hardware implementations internally automatically batching is the key concept that this api uses to pin its hopes on good performance. Batching is a big component of good performance once you stray out of simple use cases, and the authors hope (as there is no batched reference implementation) that the API design will allow for it to be batched internally
+
+In theory this is a great idea. When looking at comparable libraries for this kind of rendering though, SFML and SDL, neither of them are fully automatically batched - despite being explicitly constructed such that internally they could be batched, similar to the 2D graphics proposal. Forks have been made of SFML which partially support this, and SDL partially batches internally
+
+The problem is that batching is not a singular concept. A member of the SFML team puts it like [this](https://en.sfml-dev.org/forums/index.php?topic=16648.0):
+
+“I know what you are going to say now, why doesn't SFML do this for you since you think many might need this and this is what a multimedia library is for. I already mentioned the answer above. Different people will need different kinds of sprite batching. Writing an efficient sprite batcher is very application specific and having to account for every possible thing that developers might use it for would probably end up making it slower than simply drawing the sprites yourself.
+“
+
+[TODO: GET QUOTES FROM SFML STAFF INSTEAD OF COPYPASTING STUFF OFF THE FORUMS]
+
+Skia is a notable example of a library that tries to automatically fully batch as much as possible and is very explicitly designed to take advantage of this. Even in the case of [Skia](https://blogs.igalia.com/elima/tag/skia/), API limitations still result in batching being [difficult](https://gist.github.com/pcwalton/33bd1049d6e3b686d59fbba76fc3575a). There are further evolving technologies such as WebRender that attempt to have better APIs for better performance, but it would be potentially unwise to attempt an API redesign off something so recent. APIs with limited and specific scope like Dear ImGui, a C++ UI toolkit, are able to fully automatically batch effectively. In the case of Dear ImGui, it does not expose a manual batching API as part of [normal](#imguibatch) user code as it is unnecessary
+
+So while it is possible to fully batch automatically to some degree, it is not necessarily a full solution even if the API is well designed, for 2D graphics libraries. SFML and other more traditional graphics/media APIs instead solve this by providing an explicit api for submitting batched draw calls or vertex lists, which now brings us to the issue of safety
+
+## Likely Performance Issues Lead To Unsafety ## {#perfsafety}
+The current proposal has tried to solve some of the probable or previously proposed performance issues with a high level batching API: it provides a command_list structure, which has a theoretically batching interface. The odd thing about this interface is that it is defined such that it can run on a separate thread, with undefined behaviour from data races that must be carefully managed by the user
+
+GPU’s in OpenGL and DirectX implementations by and large do not benefit from multithreading. The primary purpose of this threading requirement appears to be to allow the implementation to support software renderers, as well as hide the cost of fully automatic batching - but introduces potential undefined behaviour through data races which must always be controlled by the user. On top of this, actually using OpenGL/etc from a multithreaded perspective is tricky, as an OpenGL context can only be active in one thread at once, requiring additional synchronisation by the implementation to avoid incorrect behaviour
+
+Other batched rendering apis do not suffer from these issues. SFML for example provides a straightforward batched rendering api equivalent (through vertex lists) that largely provides the performance benefits of batching with no unsafety
+
+This unsafety stems from a fairly fundamental issue with the proposal. APIs like SFML provide CPU objects which construct vertex lists (or equivalents), that can be obtained by the end user. Eg, sf::RectangleShape builds the vertices necessary to render a rectangle on a GPU, and then you can query the individual vertices with object.getPoint(index). This means that you can batch the code fairly straightforwardly yourself, collecting the necessary vertex information and state information, and then submit it all to the GPU as one command. Because this is performed by the programmer explicitly, there are no hidden costs that need to be hidden asynchronously by the implementation and the implementation does no expensive bookkeeping. A separate CPU and GPU design without fully automatic batching negates this need for hidden implicit threads
+
+Schemes like in this proposed API must do some kind of hidden processing on the data to determine which commands can be grouped together which can be expensive. This threading workaround potentially requires multiple mutexes (implementation and user facing), context switches (both thread switches, and backends like OpenGL), provides a future to tell you when the work has completed (must query state from the backend, this is not free!), all of which which can be very expensive, not to mention unsafe, and complex to get right for consumers of the library. There isn’t a compelling upside to this specification, but it is somewhat necessary due to the high level API design issue
+
+Software renderers do not benefit from batching in the same fashion as hardware renderers as well. This is another good example of where proper separation between CPU and GPU could lead to two, much more task specific APIs that correctly define their own use case, with unsafety only absolutely where necessary
+
+As-is, a single API needs to support too many use cases - explicit + implicit batching, mixed software rendering + hardware rendering, with hidden implicit threads - and it gives unnecessary beginner unfriendly data races and poorer performance as the result. This is a sign of problems with the overall API design, as well as the goal of being fully automatically batched in the first place. This unsafety to get performance, however, leads to further problems
+
+## Unsafety Leads To Further Usability Issues ## {#safetyusability}
+As a result of the problems in the current API design, command_list is unsafe to use as it implicitly may create threads, versus an API like SFML which is implicitly safe. As a result of the unsafety of the batching system, the authors recommend that the graphics proposal be used like so:
+
+“As such, it is recommended that users choose to use either command lists or the "direct" API (where surface member functions that perform rendering and composing operations, copying image surfaces, saving image data, etc.).”
+
+In short, they recommend either use the batching interface only, or the normal interface only, and not mixing them. In a library like SFML, batched and non batched code can be easily, and safely mixed. This means that your program can be ‘gradually’ batched - only things that actually needs to be batched suffer the complexity from being explicitly batched, and everywhere else you can use the regular api. You can teach a beginner the relatively simple batched SFML API, introduce them to it piece by piece, and they can progressively rework their code to be batched only where it needs to be batched
+
+In the proposed API, a beginner needs to rework all their rendering code, or work with synchronisation primitives like mutexes and futures. This fundamentally is hard to teach as it assumes knowledge of threads and synchronisation, and presents an unnecessary hurdle for interested beginners trying to get better performance out of the library or learn about batching
+
+The sole reason that this is not easily possible in the graphics proposal is API design deficiencies. API design issues have lead to performance issues, attempts to solve which have lead to unsafety issues, which have lead to API usability issues compared to the alternatives. There is a chain of serious issues that must be present for the API to have these problems
+
+# Bad For Beginners # {#beginnerharm}
+Beginner teachability is often used as a justification for the current proposal, with the angle that *anything* is better than nothing. Whether or not this is true, there are several fundamental problems here that would cause me to actively encourage beginners to avoid using this proposal, if it were standardised today as-is
+
+1. Poor correctness - It provides no hand holding for colour management. Every beginner is going to mess this up. There are numerous technical mistakes in the proposal and reference implementation, demonstrating the difficulties involved here
+
+2. Lack of good vocabulary types - The algebra types in general do not provide sufficient functionality for application development, which means writing a lot of code yourself or importing a second vector library. This is needlessly complex, and in some cases promotes writing incorrect code (colours)
+
+3. Insufficient performance - The performance is likely limited by the API design. You might be able to create toy applications, but getting more out of it is a problem and may even result in hard to debug thread unsafe behaviour. Beginners would be trapped in a “beginners hole”, unable to make video games (often the central goal of beginners to graphics) with the knowledge they’ve learnt. Fixing this is potentially all or nothing in user code, which hampers teachability compared to alternatives
+
+4. Feature deficient by design - It mixes together concepts like CPU and GPU in a way that other libraries do not, making it hard to offer basic standardised functionality that a teacher would expect from being familiar with other graphics libraries like direct pixel access
+
+5. Underspecified behaviour - Getting correct behaviour is implementation defined. A beginner might not understand what’s going on with premultiplied alpha or subpixel font rendering (both implementation defined), resulting in unfixable “my sprites don’t blend well” or “this text is kind of blurry” problems that might require a different standard library to fix
+
+6. Hard to transfer skills - It does not provide a base teaching point for concepts that might be transferable to a more widespread graphics library, like SFML or SDL. It would largely be learning from scratch due to their very different APIs, whereas knowledge from SFML and SDL are relatively transferable to other APIs as they wrap ubiquitous graphics concepts
+
+7. Lack of precedence - There is no existing code literature for games created in a similar api, like cairo, whereas there are decades of answered beginner questions about APIs like SFML and SDL. The reference implementation is incorrect in major ways, and there is no fully automatically batched implementation available. It is not clear if a fully automatically batched renderer or even a fully hardware accelerated implementation with good performance characteristics is possible, as there is no precedence in a Cairo style API for this. It is not clear if it is possible to build any games more complex than extremely simple in a Cairo style API due to a lack of precedence. I could find none
+
+8. Probability of further unknown issues - Most features I have been able to review within my expertise have turned out to have multiple issues with them, some very concerning or basic, but there are large parts of the standard that I am incapable of assessing
+
+# Conclusion and Recommendations # {#conclusion}
+The linear algebra types provided by the library are very inadequate generally, and in at least one case dangerous due to inadequate design. The graphics API fails to separate out the concepts of CPU and GPU, which leads to poor performance, unsafety, and a fundamental difficulty in providing basic features offered by other libraries. The proposal and reference implementations both make extensive mistakes surrounding linear colour. This proposal overall will be hampered in its future evolution without fundamental changes to the current API
+
+To fix this, the following changes need to happen:
+
+This proposal needs to be split up into multiple, smaller, independent proposals. It is extremely difficult for experts to review it adequately due to its sheer size at 261 pages, and I suspect this is a major contributing factor to this proposals current state
+
+1. A proper vector library needs to be made the basis of the linear algebra types, and proper colour theory needs to be done on a potential vector linear rgba_color type. The lack of a proper foundational library is likely a big reason why there are many mistakes and misunderstandings with rgba_color, colour spaces, and premultiplied alpha, in both the reference implementation and the proposal. Linear colour errors would have been impossible or significantly more obvious if based on a well designed library
+
+2. The graphics API needs to be changed from its current design to one where there is a clear distinction between CPU and GPU, with functionality appropriately specified between the two. These fields could potentially each be a separate, smaller proposal, and this separation allows the GPU side (the hardest to standardise part) of the graphics proposal to be shrunk significantly, with the majority of drawing functionality being specified on the CPU, constructing vertex arrays to be processed by the GPU
+
+3. Renderable objects like text and circles/etc should be unified into the concept of a shape, which is instantiated and constructed explicitly, before being rendered or transferred to the GPU. The current api has different ways of rendering different kinds of objects currently
+
+4. Fully automatic batching should be scrapped as a design goal. With #3 and #4 accomplished, it becomes easy to provide a batched api which is relatively straightforward to use, safe, higher performance, and can be gradually introduced in user code where necessary for performance instead of requiring changes to all user code
+
+5. A correct reference implementation should be written and validated against a separate existing implementation, to validate the functionality of the API, including performance. It is very difficult to prove theoretical performance properties (or lack thereof) about any graphics proposal as issues are often hard to see in advance from a high level API design, so performance arguments need to largely occur against real world code with minimal leaps of logic. An API shouldn’t be considered automatically batchable on a type of hardware until it has been explicitly shown to be, due to the often subtle complexities involved. It is not even clear that a full hardware implementation without unacceptable hidden costs is possible
+
+These necessary changes could be summed up more simply by saying that a Cairo-like API isn’t well designed for realtime interactive applications, and SFML/SDL provide much more relevant functionality. A non toy videogame has not yet been written in Cairo, whereas both SFML and SDL are extensively used in a wide variety of applications and games. In the event that both above basic beginner videogames are deemed to not be in scope and fully automatic batching is desirable, Skia provides a good starting point additionally, potentially with inspiration from the cutting edge of web development technologies
+
+Fixing the proposal as-is is equivalent to redoing the entire thing and starting again with a different base, with prerequisites on having a standardised linear algebra library (or at minimum a proper colour library), and deep review by relevant experts
+
+# Misc Errors # {#miscerrors}
+This section is related to errors with the proposal that I found incidentally while writing this document, notable errors in the reference implementation, or are errors unrelated to the wider theme of the document
+
+## Linear Color ## {#misclincol}
+
+* Premultiplication is defined as such:
+
+    “visual data format with one or more color channels and an alpha channel where each color channel is normalized and then multiplied by the normalized alpha channel value [ Example: Given the 32-bit nonpremultiplied RGBA pixel with 8 bits per channel {255, 0, 0, 127} (half-transparent red), when normalized it would become {1.0f, 0.0f, 0.0f, 0.5f}. When premultiplied it would become {0.5f, 0.0f, 0.0f, 0.5f} as a result of multiplying each of the three color channels by the alpha channel value. — end example ] “
+
+    Premultiplication should be done in linear space. Given that this is 8-bit rgba this is almost certainly sRGB, which means that the correct sequence of steps is: linearise, then premultiply, then optionally go back to sRGB if you wish to store your data in sRGB, or keep it as linear floats. Either way, this example only works by happenstance. Note: This is probably one of the most pervasive errors in computer graphics, it is very likely that at some point intermediate tools will handle either premultiplication incorrectly, or linear colour incorrectly. Even decoders for common formats like PNG can handle this incorrectly
+
+* The reference implementation implements incorrect premultiplication in ConvertToAlphaless and other uses of premultiplied alpha, although it is dubiously ‘correct’ as currently specified
+
+* The reference implementation provides functions to convert between HSV and rgba_color without linearisation. HSV is gamma encoded, and rgba_color is linear
+
+* The reference implementation appears to define the sRGB colour space kCGColorSpaceGenericRGB as the colour model being used, which is incorrectly used to process rgba_color which should be linear - though in reality incorrectly contains sRGB data. These two errors cancel out
+
+* The reference implementation as a whole is largely incorrect, and after more investigation does not handle any kind of sRGB or linear colour correctly. The test images were probably generated using the reference implementation itself, and nearly every generatable image which involves any kind of blending, interpolation, transparency, or colour of any kind is incorrect, quite significantly, across any backend that conforms to the test suite. Please see [this](https://www.shadertoy.com/view/3dtSR4) demonstration for an explicit example demonstrating this
+
+## Others ## {#miscetc}
+
+* Text rendering in its current form allows you to specify render props, but the necessary blend mode specified when rendering text is dependent on whether or not you render grayscale or subpixel antialiased font - however currently text rendering modes are not mandatory of the implementation. Additionally, the blend mode needed to render subpixel antialiased fonts correctly is not present (a correct subpixel font rendering API requires dual source blending with the GL_SRC1_COLOR blend mode which is not universally standard), and it is not clear how this could be supported as the API does not support any kind of non standard functionality
+
+* The paper defines very basic interop with a window, but provides no functionality to actually make it usable. APIs like OpenGL are implemented as a global state machine, which means that the rendering behaviour of the implementation is dependent on global factors. Changing this state is expensive, and for this reason implementations seek to generally set up the global state and then change it as little as possible. When user code performs interop with the current proposal, changing any global state at all would be a hard piece of implementation defined behaviour - which means digging through source code, and severely hampers cross platform code. For this reason, SFML defines pushGLStates, popGLStates, and resetGLStates, as well as context functions, to standardise interop with its internal state. It isn’t the most performant solution for very advanced user specified functionality, but it significantly eases the burden and is more than adequate for most beginner to advanced intermediate use cases. Something similar could and should be added that is generic across different backends. However, notably the threaded batch interface provided by this proposal interferes with interop due to OpenGL contexts only being able to be active on one thread at once, which results in even more complexity
+
+* The paper defines all composition operations to take place as-if in linear colour, which in some cases could require sRGB framebuffers which may be unavailable. It is not clear what should happen if at runtime the implementation is able to provide this guarantee
+
+* It is not clear if the fixed refresh rate mode takes into account the case where draw callbacks take longer than the time between frames. The wording looks like either it does not handle that case correctly, or that it neglects the time it takes for a draw callback itself to execute
+
+* The paper uses std::function for its callback types. While this isn’t a dealbreaker or necessarily incorrect as such, it does seem unnecessarily heavy when comparable libraries do not suffer from this overhead. Low overhead C-style callback driven libraries (eg GLFW) tend to be trickier to use due to void* pointers or global state - whereas an event queue system like SFML or SDL maps well to the underlying model, provides almost no overhead, and is very safe. This requires a major redesign of the graphics proposal, but this paper is proposing a major redesign anyway
+
+# Footnotes # {#footnotes}
+
+## Async ## {#async}
+
+Due to lack of control over the memory space of where allocations happen, memory is generally allocated outside of PCI-E accessible memory, which necessitates that the driver must copy your memory elsewhere before it can be written to the GPU. (See: [OpenCL Memory Objects](https://developer.amd.com/wordpress/media/2013/07/AMD_Accelerated_Parallel_Processing_OpenCL_Programming_Guide-rev-2.7.pdf))
+
+Friendly APIs are generally blocking as well, because a true asynchronous API (even besides from the PCI-E accessible memory issue) either has to copy your memory buffer, or ask you not to use it for the duration of the transfer which is relatively complex. Neither of these issues are actually that bad for most code, except that synchronous reads largely produce unacceptably poor performance
+
+## Dear ImGui ## {#imguibatch}
+
+Dear ImGui however does provide an interface that can be used for batching, by exposing its internal APIs. This is intended for custom or more advanced rendering, and is not necessary in code which just utilises ImGui's normal functionality
