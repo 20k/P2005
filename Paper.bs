@@ -28,12 +28,12 @@ It is important to note that the meaningful distinction between linear colour an
 The API is largely based on Cairo, and a reference implementation for this proposed standard is available over here [https://github.com/cpp-io2d/P0267_RefImp](https://github.com/cpp-io2d/P0267_RefImpl)
 
 ## GPU Architecture ## {#gpuarch}
-GPUs operate largely in a pipelined fashion. This is essentially a queue of commands - keeping this queue not empty is essential for performance, as is using the queue asynchronously. Blocking, synchronous commands are very bad for performance, in particular reads from the GPU to the CPU. While GPU’s are massively parallel machines with conceptually thousands of threads, the submission of commands to a GPU is [largely a single threaded affair](https://www.khronos.org/opengl/wiki/OpenGL_and_multithreading). There are specific use cases where multithreading is useful to performance, as in the DX12/Vulkan/Mantle/Metal apis, but this is out of scope for both this paper, and the design goals of the 2D graphics proposal in general
+GPUs operate largely in a pipelined fashion. This is essentially a queue of commands - keeping this queue not empty is essential for performance, as is using the queue asynchronously. Blocking, synchronous commands are very bad for performance, in particular reads from the GPU to the CPU. While GPU’s are massively parallel devices with conceptually thousands of threads, the submission of commands to a GPU is [largely a single threaded affair](https://www.khronos.org/opengl/wiki/OpenGL_and_multithreading). There are specific use cases where multithreading is useful to performance, as in the DX12/Vulkan/Mantle/Metal apis, but this is out of scope for both this paper, and the design goals of the 2D graphics proposal in general
 
 ## Batching ## {#batch}
 There is a non trivial amount of overhead in issuing any GPU command. For getting the best performance, multiple commands can be merged together into one larger command. This isn’t something that can be done unconditionally - the ability to ‘batch’ commands together into a single command is determined by certain constraints
 
-SFML/SDL/Allegro/Cairo and most other libraries do not fully automatically batch commands together - either intentionally, or due to difficulty implementing a fully automatic batching system and [API problems](https://gist.github.com/pcwalton/33bd1049d6e3b686d59fbba76fc3575a) (eg Skia). [Dear ImGui](https://github.com/ocornut/imgui) is an example of a library that is largely able to fully automatically batch for performance, due to its specific use case for rendering GUIs and its API design. [SDL batches internally](https://www.patreon.com/posts/project-sdl-21856507) where it is able, but relies on the end user structuring their data in such a way that it can take advantage of this (eg constructing a sprite atlas)
+SFML/SDL/Allegro/Cairo and most other libraries do not *fully* automatically batch commands together - either intentionally, or due to difficulty implementing a fully automatic batching system and [API problems](https://gist.github.com/pcwalton/33bd1049d6e3b686d59fbba76fc3575a) (eg Skia). [Dear ImGui](https://github.com/ocornut/imgui) is an example of a library that is largely able to fully automatically batch for performance, due to its specific use case for rendering GUIs and its API design. [SDL batches internally](https://www.patreon.com/posts/project-sdl-21856507) where it is able, but relies on the end user structuring their data in such a way that it can take advantage of this (eg constructing a sprite atlas)
 
 To clarify terminology: I am using batching to refer to any scheme by which multiple independent GPU commands might be merged together (eg vertex lists in SFML, which are not strictly batching under some definitions, but function similarly and fulfill a similar use case), automatic batching to refer to the implementation making relatively simple decisions about which content to merge (eg as in SDL), and fully automatic batching to refer to an implementation which is able to make enough decisions about merging content together that manual batching is unnecessary in the general case, without having to make large code modifications to make it work. The proposal being looked at is proposing a fully automatically batched scheme under this terminology, as manual batching is not a high priority and the authors expect good performance without any manual batching
 
@@ -70,7 +70,7 @@ The other vector type present in the standard is basic_point_2d, which in an ide
 
 Unfortunately, this proposal does not propose a vector type with which to base basic_point_2d and rgba_color on. Making the changes necessary to these classes to base them on proper vector types and provide useful vocabulary types post-hoc would result in breaking changes, which means that once these are standardised in their current temporary form, they’ll persist while being insufficient. In their current form additionally, almost all specified operations should be duplicated between them as both are suitable for any provided vector functionality
 
-It is currently not possible to write generic templated code that accepts both basic_point_2d and rgba_color without duplication, for no reason. When a future more complete vector type appears (eg [p1385r3](http://open-std.org/JTC1/SC22/WG21/docs/papers/2019/p1385r3.pdf)) which is necessarily very different due to parameterisation, we then may well end up with 3 different incompatible vector APIs in the standard that users have to write code for if they want their code to be flexible, rather than the expected number which is 1. The class basic_matrix_2d also suffers from genericity issues, with hardcoded accessor properties and no generic API, which results in similar problems with future matrix types
+It is currently not possible to write generic templated code that accepts both basic_point_2d and rgba_color without duplication, for no reason. When a future more complete vector type appears (eg ["P1385R3"](http://open-std.org/JTC1/SC22/WG21/docs/papers/2019/p1385r3.pdf)) which is necessarily very different due to parameterisation, we then may well end up with 3 different incompatible vector APIs in the standard that users have to write code for if they want their code to be flexible, rather than the expected number which is 1. The class basic_matrix_2d also suffers from genericity issues, with hardcoded accessor properties and no generic API, which results in similar problems with future matrix types
 
 rgba_color operator\* is also very confusing. It saturates, meaning that it does not store values > 1 (instead clamping), but also does not allow multiplication by any floating point values > 1 or < 0, or integer values > 255 or < 0. Additionally, it overloads on float and int to define int multiplication as /255.f, the combined sum of which is best illustrated in the following code sample
 
@@ -105,7 +105,7 @@ Overall, there are a number of issues identified surrounding the handling of col
 ### Technical Defects ### {#technicaldefects}
 1. Incorrect colour constants
 2. The definition of premultiplied alpha is incorrect (sRGB data must be linearised first)
-3. operator\* saturates, but its API requirements prevent it from having an operation performed on it that would require this
+3. operator\* saturates, but rgba_color's API requirements prevent it from having an operation performed on it that would require this
 
 ### Problematic Design ### {#designissues}
 1. Ambiguously colour spaced constructors. Having unnamed constructors is probably a bad idea overall
@@ -123,7 +123,7 @@ Overall, there are a number of issues identified surrounding the handling of col
 4. Most of the test data is incorrect due to sRGB blending, and appears to be testing the implementation against its own output
 5. Premultiplied alpha is implemented incorrectly
 
-Proper linear colour handling is one of the few fields where I consider myself to be relatively technically competent due my experience working on subpixel font rendering and game engines, and is the area of this proposal I was most expertly able to review. I would consider it likely that there are other issues in this standard that I am not able to find due to a lack of technical expertise in other areas of this proposal
+Proper linear colour handling is one of the few fields where I consider myself to be relatively technically competent due my experience working on subpixel font rendering and game engines, and is the area of this proposal I was most expertly able to review. I would consider it likely that there are other issues in this proposal that I am not able to find due to a lack of specialist technical expertise in other fields
 
 # The Wider Graphics API # {#graphicsapi}
 The above sections focus on the linear algebra section of the library, and from here on will now focus on the actual graphics API itself
@@ -260,7 +260,7 @@ Fixing the proposal as-is is equivalent to redoing the entire thing and starting
 # Misc Errors # {#miscerrors}
 This section is related to errors with the proposal that I found incidentally while writing this document, notable errors in the reference implementation, or are errors unrelated to the wider theme of the document
 
-## Linear Color ## {#misclincol}
+## Linear Colour ## {#misclincol}
 
 * Premultiplication is defined as such:
 
