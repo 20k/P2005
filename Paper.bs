@@ -169,7 +169,7 @@ Unifying all these constraints under one device agnostic API is challenging, and
 
 # Performance, Safety, and API Usability # {#perfutility}
 ## Fully Automatic Batching ## {#fullyautomaticbatching}
-Performance in a 2D graphics library is often played down, with it being deemed unnecessary that beginners might want to render large numbers of objects, but there is reason to believe that the API as a whole might not be well implementable in the general case
+Performance in a 2D graphics library is often played down, with it being deemed unnecessary that beginners might want to render large numbers of objects or create realtime interactive applications that run at >30fps, but there is reason to believe that the API as a whole might not be well implementable in the general case
 
 Hardware implementations internally automatically batching is the key concept that this API uses to pin its hopes on good performance. Batching is a big component of good performance once you stray out of simple use cases, and the authors hope (as there is no batched reference implementation) that the API design will allow for it to be batched internally
 
