@@ -164,7 +164,7 @@ A library with correctly separated CPU and GPU types cannot reasonably suffer fr
 
 Some features like [direct pixel](https://www.sfml-dev.org/documentation/2.5.1/classsf_1_1Image.php#ad9562b126fc8d5efcf608166992865c7) modification/access for CPU types are standard and basic across a range of 2D graphics libraries. Direct pixel access however is not specified for GPU types, as it is significantly complex to specify and implement, and instead most libraries solely define [pixel transfer in bulk](https://www.sfml-dev.org/documentation/2.5.1/classsf_1_1Texture.php) between the CPU and GPU
 
-It is likely that direct pixel access of any form would be difficult to adequately specify in this proposal. Batched rendering is an example of an overly complex API (discussed in detail under [[#perfutility]]), and external surface modification and native interop were previously supported in this standard and both removed, likely due to similar issues
+It is likely that direct pixel access of any form would be difficult to adequately specify in this proposal, due to this problem. Batched rendering is an existing example of an overly complex API (discussed in detail under [[#perfutility]]), and external surface modification and native interop were previously supported in this standard and both removed, potentially due to similar issues
 
 Unifying all these constraints under one device agnostic API is challenging, and will likely result in an unnecessarily complex, unsafe, non performant, and hard to use APIs
 
