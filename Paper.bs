@@ -159,7 +159,7 @@ A library with correctly separated CPU and GPU types cannot reasonably suffer fr
 
 1. Every proposed API must suffers from the union of worst case API requirements between hardware and software implementations
 2. Hardware and software implementations have very different API requirements
-3. Trying to fit this requirements together makes basic features hard to standardise, or requires complex APIs
+3. Trying to fit these requirements together makes basic features hard to standardise, or requires complex APIs
 
 Some features like [direct pixel](https://www.sfml-dev.org/documentation/2.5.1/classsf_1_1Image.php#ad9562b126fc8d5efcf608166992865c7) modification/access for CPU types are standard and basic across a range of 2D graphics libraries. Direct pixel access however is not specified for GPU types, as it is significantly complex to specify and implement, and instead most libraries solely define [pixel transfer in bulk](https://www.sfml-dev.org/documentation/2.5.1/classsf_1_1Texture.php) between the CPU and GPU
 
