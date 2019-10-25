@@ -166,7 +166,9 @@ Some features like [direct pixel](https://www.sfml-dev.org/documentation/2.5.1/c
 
 It is likely that direct pixel access of any form would be difficult to adequately specify in this proposal, due to this problem. Batched rendering is an existing example of an overly complex API (discussed in detail under [[#perfutility]]), and external surface modification and native interop were previously supported in this standard and both removed, potentially due to similar issues
 
-Unifying all these constraints under one device agnostic API is challenging, and will likely result in an unnecessarily complex, unsafe, non performant, and hard to use APIs
+In the reference implementation, portable direct pixel access in the event of an unknown implementation is achieved by saving an image to disk, and then manually loading and decoding the resulting .png image through non 2D graphics APIs. Needless to say, this is not the most performant solution
+
+Unifying all the different implementation constraints under one device agnostic API is challenging, and will likely result in an unnecessarily complex, unsafe, non performant, and hard to use APIs
 
 # Performance, Safety, and API Usability # {#perfutility}
 ## Fully Automatic Batching ## {#fullyautomaticbatching}
