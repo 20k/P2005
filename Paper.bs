@@ -106,7 +106,7 @@ Overall, there are a number of issues identified surrounding the handling of col
 1. Incorrect colour constants
 2. The definition of premultiplied alpha is incorrect (sRGB data must be linearised first)
 3. operator\* saturates, but rgba_color's API requirements prevent it from having an operation performed on it that would require this
-4. All pixel formats are specified as being in the RGB colour model (linear), but are all integer formats. Precision loss is guaranteed if implemented as per exact wording - slightly more flexible wording could allow sRGB textures, but these are not always available, and it is unclear what would happen if they were not. There is no specified high precision storage type which is suitable for storing linear data
+4. All pixel formats are specified as being in the RGB colour model (linear), but are all integer formats. Precision loss is guaranteed if implemented as per exact wording (as converting 8-bit linear to 8-bit sRGB for rendering is incorrect). Slightly different wording could change these formats to be sRGB, but then linear blending requires sRGB textures which are not always available, so it is unclear how this could be standardised. There is no specified high precision storage type which is suitable for storing linear data currently in the proposal
 
 ### Problematic Design ### {#designissues}
 1. Ambiguously colour spaced constructors. Having unnamed constructors is probably a bad idea overall
