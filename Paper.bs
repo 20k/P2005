@@ -12,7 +12,6 @@ Markup Shorthands: markdown yes
 </pre>
 
 [The only todo is if I need an explicit bibliography/references, and what the above section of information should contain]
-[i lie, the middle section of this could be rewritten with better arguments in lieu of cairo itself admitting that its not high perf]
 
 # Abstract # {#abstract}
 This document aims to review portions of the proposed 2D graphics standard ["P0267R10"](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0267r10.pdf), and focuses particularly on its handling of colours, linear algebra, and high level API design. There are a number of major API design issues and minor technical faults present in the proposal currently, which hamper current and future functionality, and more concerningly it may be of limited value to beginners. The overall high level problems with the proposal are best highlighted by technical defects within the proposal and reference implementation made as a result of these high level problems. This document is aimed at people who do not have any background in computer graphics but want to understand the issues in depth, and additionally presents a different starting point for jumping off with a future graphics initiative
@@ -111,7 +110,7 @@ Overall, there are a number of issues identified surrounding the handling of col
 ### Problematic Design ### {#designissues}
 1. Ambiguously colour spaced constructors. Having unnamed constructors is probably a bad idea overall
 2. Integer linear constructor is a beginner trap
-3. operator\* has very peculiar overloaded behaviour on int and float, and saturates by API design (eg cannot do col \* 2.0)
+3. operator\* has very peculiar overloaded behaviour on int and float, and saturates by API design (eg you may write col \* 0.9, but not col \* 1.1)
 5. No strong typing or signposting for colour spaces to common avoid linear vs sRGB errors
 6. No functions to convert from or to sRGB, which are necessary given the ubiquitousness of sRGB and the necessity of linear colour
 7. Lack of useful features encourages the use of less appropriate classes not explicitly designed for storing colour
@@ -148,10 +147,11 @@ The proposal as currently stated runs into a double whammy of both performance, 
 
 ## Performance Limitations ## {#performance}
 
-1. No definition of when necessary but undesirable behaviour should occur, forcing implementations and end users to guess where it should occur
-2. Using APIs performantly will vary between different implementations, quite significantly, requiring code rewrites or even implementation #ifdefs
-3. Partially hardware accelerated backends may have extremely low performance behaviour that is very difficult to avoid, as you do not have explicit control over eg GPU readbacks
-4. Partial hardware acceleration is a likely, and extremely undesirable outcome of this proposal
+1. No definition of when necessary but undesirable behaviour like data transfers should occur, forcing implementations and end users to guess
+2. Using APIs performantly will vary between different implementations as a result, quite significantly, requiring code rewrites or even implementation #ifdefs
+3. Partially hardware accelerated backends may have extremely low performance behaviour that is very difficult to avoid as a result. Implementations may be forced to perform hidden readbacks that are very difficult to avoid
+
+Partial hardware acceleration is additionally a likely, and extremely undesirable outcome of this proposal: partly due to its basis on Cairo's API, and partly due to the lack of specification or experience on how a realistic hardware accelerated implementation might look
 
 A library with correctly separated CPU and GPU types cannot reasonably suffer from these performance limitations, or partial hardware acceleration in particular, and is much more predictable to use
 
@@ -163,9 +163,9 @@ A library with correctly separated CPU and GPU types cannot reasonably suffer fr
 
 Some features like [direct pixel](https://www.sfml-dev.org/documentation/2.5.1/classsf_1_1Image.php#ad9562b126fc8d5efcf608166992865c7) modification/access for CPU types are standard and basic across a range of 2D graphics libraries. Direct pixel access however is not specified for GPU types, as it is significantly complex to specify and implement, and instead most libraries solely define [pixel transfer in bulk](https://www.sfml-dev.org/documentation/2.5.1/classsf_1_1Texture.php) between the CPU and GPU
 
-It is likely that direct pixel access would be difficult to adequately specify in this proposal. Batched rendering is an example of an overly complex API, and external surface modification and native interop were previously supported in this standard and both removed, likely due to similar issues
+It is likely that direct pixel access of any form would be difficult to adequately specify in this proposal. Batched rendering is an example of an overly complex API (discussed in detail under [[#perfutility]]), and external surface modification and native interop were previously supported in this standard and both removed, likely due to similar issues
 
-Unifying all these constraints under one device agnostic API is challenging, and will likely result in an unnecessarily complex, unsafe, non performant, and hard to use API
+Unifying all these constraints under one device agnostic API is challenging, and will likely result in an unnecessarily complex, unsafe, non performant, and hard to use APIs
 
 # Performance, Safety, and API Usability # {#perfutility}
 ## Fully Automatic Batching ## {#fullyautomaticbatching}
@@ -189,7 +189,7 @@ So while it is possible to fully batch automatically to some degree, it is not n
 ## Performance Issues Lead To Unsafety ## {#perfsafety}
 The current proposal has tried to solve some of the probable or previously proposed performance issues with a high level batching API: it provides a command_list structure, which has a theoretically batching interface. The odd thing about this interface is that it is defined such that it can run on a separate thread returning a future, with undefined behaviour from data races that must be carefully managed by the user
 
-GPU’s in OpenGL and DirectX implementations by and large do not benefit from multithreading. The primary purpose of this threading requirement appears to be to allow the implementation to support software renderers efficiently, as well as hide the cost of fully automatic batching - but introduces potential undefined behaviour through data races which must always be controlled by the user. On top of this, actually using OpenGL/etc from a multithreaded perspective is tricky, as an OpenGL context can only be active in one thread at once, requiring additional synchronisation by the implementation to avoid incorrect behaviour
+GPU’s in OpenGL and DirectX implementations by and large [do not benefit](https://www.khronos.org/opengl/wiki/OpenGL_and_multithreading) from multithreading. The primary purpose of this threading requirement appears to be to allow the implementation to support software renderers efficiently, as well as hide the cost of fully automatic batching - but introduces potential undefined behaviour through data races which must always be controlled by the user. On top of this, actually using OpenGL/etc from a multithreaded perspective is tricky, as an OpenGL context can only be active in one thread at once, requiring additional synchronisation by the implementation to avoid incorrect behaviour
 
 Schemes like in this proposed API must do some kind of hidden processing on the data to determine which commands can be grouped together which can be expensive - simply submitting a group of high level commands at once does not make them batchable. This threading workaround potentially requires multiple mutexes (implementation and user facing), context switches (both thread switches, and backends like OpenGL), provides a future to tell you when the work has completed (must query state from the backend, this is not free!), all of which which can be very expensive, not to mention unsafe, and complex to get right for consumers of the proposal. There isn’t a compelling upside to this specification, but it is somewhat necessary due to the high level API design issue and the implicit batching goals of the proposal
 
@@ -246,7 +246,7 @@ The linear algebra types provided by the library are very inadequate generally, 
 
 To fix this, the following changes need to happen:
 
-1. This proposal needs to be split up into multiple, smaller, independent proposals. It is extremely difficult for experts to review it adequately due to its sheer size at 261 pages, and I suspect this is a major contributing factor to this proposals current state
+1. This proposal needs to be split up into multiple, smaller, independent proposals. It is extremely difficult for experts to review it adequately due to its sheer size at 261 pages, and I suspect this is a major contributing factor to this proposals current state. Given that R6 was 148 pages long, this proposal is likely to keep increasing massively in size as a lot of functionality is still unspecified, like input, and it still only specifies basic drawing facilities. It would not surprise me to see this proposal hit at least 400-500 pages, whereas the working draft for the entire C++17 standard is [only 1448 pages](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/n4713.pdf) long
 
 2. A proper vector library needs to be made the basis of the linear algebra types, and proper colour theory needs to be done on a potential vector linear rgba_color type. The lack of a proper foundational library is likely a big reason why there are many mistakes and misunderstandings with rgba_color, colour spaces, and premultiplied alpha, in both the reference implementation and the proposal. Linear colour errors would have been impossible or significantly more obvious if based on a well designed library
 
@@ -313,4 +313,4 @@ It is tempting to think that operator\* could be used to convert between a 0 -> 
 
 ## Hidden API Cost ## {#hidden}
 
-While a library like SFML generally lacks large hidden performance costs, that does not also mean that the APIs are *fast*. The main concern is allowing users to avoid APIs that are [inherently and obviously slow](https://www.sfml-dev.org/documentation/2.5.1/classsf_1_1Texture.php#a77e18a70de2e525ac5e4a7cd95f614b9) (like a GPU read) or intentionally signpost their usage, rather than accidentally uncovering such behaviour as an implementation defect or defect in the design of the proposed 2D graphics API. [Back](#alternativepractice)
+While a library like SFML generally lacks large hidden performance costs, that does not also mean that the APIs are *fast*. The main concern is allowing users to avoid APIs that are [inherently and obviously slow](https://www.sfml-dev.org/documentation/2.5.1/classsf_1_1Texture.php#a77e18a70de2e525ac5e4a7cd95f614b9) (a GPU read) or intentionally signpost their usage, rather than accidentally uncovering such behaviour as an implementation defect or defect in the design of the proposed 2D graphics API. [Back](#alternativepractice)
