@@ -1,5 +1,5 @@
 <pre class='metadata'>
-Title: 2D Graphics Review
+Title: A Brief 2D Graphics Review
 Shortname: None
 Revision: 0
 Status: iso/P
