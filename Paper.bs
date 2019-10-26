@@ -224,7 +224,7 @@ As it stands with this batching API, there are several options, none of which ar
 This kind of tradeoff is likely to be a common story for other future features (like direct pixel access), even though it is unnecessary
 
 # Bad For Beginners # {#beginnerharm}
-Beginner teachability is often used as a justification for the current proposal, with the angle that *anything* is better than nothing. Whether or not this is true, there are several fundamental problems here that would cause me to actively encourage beginners to avoid using this proposal, if it were standardised today as-is (with minor bugfixes applied)
+Beginner teachability is often used as a justification for the current proposal, with the angle that *anything* is better than nothing. Whether or not this is true, there are several fundamental problems here that would cause me to actively encourage beginners to avoid using this proposal, if it were standardised today as-is (with some bugfixes applied)
 
 1. Poor correctness - It provides no hand holding for colour management, and rgba_color is actively harmful. Every beginner is going to mess this up. There are numerous technical mistakes across the proposal and reference implementation, demonstrating the difficulties involved here
 
