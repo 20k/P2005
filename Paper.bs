@@ -156,7 +156,7 @@ A library with correctly separated CPU and GPU types cannot reasonably suffer fr
 
 ## Functionality Limitations ## {#functionality}
 
-1. Every proposed API must suffers from the union of worst case API requirements between hardware and software implementations
+1. Every proposed API must suffer from the union of worst case API requirements between hardware and software implementations
 2. Hardware and software implementations have very different API requirements
 3. Trying to fit these requirements together makes basic features hard to standardise, or requires complex APIs
 
@@ -185,7 +185,7 @@ Skia is a notable example of a library that tries to automatically fully batch a
 
 Post hoc fixes to APIs like Cairo, Skia and WebRender to allow for more batching, or more efficient hardware acceleration, can result in large wide ranging architecture changes. For an example, [WebRender required](https://mozillagfx.wordpress.com/2019/10/22/dramatically-reduced-power-usage-in-firefox-70-on-macos-with-core-animation/) major overhauls in fixing what seems like a potentially non API design issue - much higher power consumption on mac vs windows (even though both are fully hardware accelerated) due to a seemingly minor cross platform difference. Specifically, "These findings have informed substantial changes to WebRender’s architecture". Given that C++ must be backwards compatible, it means that any very problematic issues discovered with the API design that may prevent acceptable performance and fully automatic batching in particular are likely permanent. This is less of a problem in APIs like SFML and SDL, as they tend to minimally wrap specific well understood existing graphics concepts, like a (specifically) GPU texture or a vertex array, instead of trying to specify behaviour in a higher level declarative sense and leaving the implementation very uncertain and complex to implement
 
-So while it is possible to fully batch automatically to some degree, it is not necessarily a full solution even if the API is well designed, for 2D graphics libraries. SFML and other more traditional graphics/media APIs instead solve this by providing an explicit api for submitting batched draw calls or vertex lists, which now brings us to the issue of safety
+So while it is possible to batch automatically to some degree, it is not necessarily a full solution even if the API is well designed, for 2D graphics libraries. SFML and other more traditional graphics/media APIs instead solve this by providing an explicit api for submitting batched draw calls or vertex lists, which now brings us to the issue of safety
 
 ## Performance Issues Lead To Unsafety ## {#perfsafety}
 The current proposal has tried to solve some of the probable or previously proposed performance issues with a high level batching API: it provides a command_list structure, which has a theoretically batching interface. The odd thing about this interface is that it is defined such that it can run on a separate thread returning a future, with undefined behaviour from data races that must be carefully managed by the user
@@ -205,7 +205,7 @@ As a result of the problems in the current API design, command_list is unsafe to
 
 “As such, it is recommended that users choose to use either command lists or the "direct" API (where surface member functions that perform rendering and composing operations, copying image surfaces, saving image data, etc.).”
 
-In short, they recommend either use the batching interface only, or the normal interface only, and not mixing them. In a library like SFML, batched and non batched code can be easily, and safely mixed. This means that your program can be ‘gradually’ batched - only things that actually needs to be batched suffer the complexity from being explicitly batched, and everywhere else you can use the regular api. You can teach a beginner the relatively simple batched SFML API, introduce them to it piece by piece, and they can progressively rework their code to be batched only where it needs to be batched
+In short, they recommend either using the batching interface only, or the normal interface only, and not mixing them. In a library like SFML, batched and non batched code can be easily, and safely mixed. This means that your program can be ‘gradually’ batched - only things that actually needs to be batched suffer the complexity from being explicitly batched, and everywhere else you can use the regular api. You can teach a beginner the relatively simple batched SFML API, introduce them to it piece by piece, and they can progressively rework their code to be batched only where it needs to be batched
 
 In the proposed API, a beginner needs to rework all their rendering code, or work with synchronisation primitives like mutexes and futures. This fundamentally is hard to teach as it mandates knowledge of threads, synchronisation, and async code, and presents an unnecessary hurdle for interested beginners trying to get better performance out of the library or learn about batching
 
@@ -221,7 +221,7 @@ As it stands with this batching API, there are several options, none of which ar
 4. Add another function, and specify the two methods to be designed for hardware or software renderers specifically. This leads to two ways to do the same thing on one object, where the optimal API to use is dependent on the implementation which cannot be queried and is inherently unspecified
 5. Split up the types involved into CPU and GPU versions, and expose the minimal necessary APIs on each. This requires major changes to the proposal, but would solve many fundamental issues
 
-This kind of tradeoff is likely to be a common story for other future features (like direct pixel access), even though it is unnecessary
+This kind of tradeoff is likely to be a common story for other future features (like direct pixel access), even though it is unnecessary. This I believe is a fundamental limiting factor in the kind of functionality that this proposal will be able to offer, as well as how usable and performant any functionality it can offer is
 
 # Bad For Beginners # {#beginnerharm}
 Beginner teachability is often used as a justification for the current proposal, with the angle that *anything* is better than nothing. Whether or not this is true, there are several fundamental problems here that would cause me to actively encourage beginners to avoid using this proposal, if it were standardised today as-is (with some bugfixes applied)
