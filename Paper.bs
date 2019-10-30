@@ -2,7 +2,7 @@
 Title: A Brief 2D Graphics Review
 Shortname: None
 Revision: 0
-Status: iso/P
+Status: iso/D
 Group: WG21
 URL: none
 Editor: [James Berrow](mailto:icedshot@gmail.com)
