@@ -224,7 +224,7 @@ As it stands with this batching API, there are several options, none of which ar
 This kind of tradeoff is likely to be a common story for other future features (like direct pixel access), even though it is unnecessary. This I believe is a fundamental limiting factor in the kind of functionality that future versions of the 2D graphics library will be able to offer, as well as how usable and performant any functionality it can offer is.
 
 # Bad For Beginners # {#beginnerharm}
-Beginner teachability is often used as a justification for the current 2D graphics proposal, with the angle that *anything* is better than nothing. Whether or not this is true, there are several fundamental problems here that would cause me to actively encourage beginners to avoid using the proposed 2D graphics library, if it were standardised today as-is (with some bugfixes applied).
+Beginner teachability is often used as a justification for the current 2D graphics proposal, with the angle that *anything* is better than nothing. Whether or not this is true, there are several fundamental problems here that would cause me to actively discourage beginners from using the proposed 2D graphics library, if it were standardised today as-is (with some bugfixes applied).
 
 1. Poor correctness - It provides no hand holding for colour management, and rgba_color is actively harmful. Every beginner is going to mess this up. There are numerous technical mistakes across the 2D graphics proposal and reference implementation, demonstrating the difficulties involved here.
 
