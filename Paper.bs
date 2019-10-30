@@ -88,7 +88,7 @@ rgba_color col5 = (some_col * 2) * 0.5; // gives 0, 0.0012, 0.002, 0.0039
 rgba_color col8 = (some_col * 4) * 0.5; // gives 0, 0.0024, 0.0039, 0.0078
 ```
 
-While not explicitly wrong, this is very unintuitive behaviour, and will definitely be used incorrectly by beginners. It encourages users to mix integer and floating point types to get correct behaviour, and breaks commutivity.
+While not explicitly wrong, this is very unintuitive behaviour, and will definitely be used incorrectly by beginners. It encourages users to mix integer and floating point types to get correct behaviour, and breaks commutativity.
 
 ## Already Widely Misused ## {#widelymisued}
 The current ad-hoc approach to designing these types and lack of library fundamentals is likely why rgba_color is so easy to misuse. Colour is near universally mishandled across many open source libraries, but it is particularly disappointing that these mistakes might be cemented into C++ solely as a result of insufficient API design. Users will likely treat rgba_color as a black box due to its lack of useful API, input sRGB data instead into a traditional vector class not designed for colour management, perform incorrect maths on it, and then incorrectly convert to rgba_color at the end ignoring any potentially safer constructors that might be introduced - this is particularly true if a future independent incompatible vector library proposal is standardised, which does not provide colour support due to being a niche field. operator\* also has a particularly odd design, and seems error prone.
@@ -172,7 +172,7 @@ More generally, unifying all the different implementation constraints under one 
 ## Fully Automatic Batching ## {#fullyautomaticbatching}
 Performance in a 2D graphics library is often played down, with it being deemed unnecessary that beginners might want to render large numbers of objects or create realtime interactive applications that run at >30fps, but there is reason to believe that the API as a whole might not be well implementable in the general case.
 
-Hardware implementations internally automatically batching is the key concept that this API uses to pin its hopes on good performance. Batching is a big component of good performance once you stray out of simple use cases, and the authors hope (as there is no batched reference implementation) that the API design will allow for it to be batched internally.
+The key concept that P0267 relies on for good performance in hardware implementations, is that they fully batch, automatically. Batching is a big component of good performance once you stray out of simple use cases, and the authors hope (as there is no batched reference implementation) that the API design will allow for it to be batched internally.
 
 In theory this is a great idea. When looking at comparable libraries for this kind of generic graphics rendering though, like SFML and SDL, neither of them are fully automatically batched - despite being explicitly constructed such that internally they could be batched, similar to the 2D graphics proposal. Forks have been made of SFML which partially support this, and SDL partially batches internally.
 
