@@ -209,7 +209,7 @@ In short, they recommend either using the batching interface only, or the normal
 
 In the proposed API, a beginner needs to rework all their rendering code, or work with synchronisation primitives like mutexes and futures. This fundamentally is hard to teach as it mandates knowledge of threads, synchronisation, and async code, and presents an unnecessary hurdle for interested beginners trying to get better performance out of the library or learn about batching.
 
-The sole reason that this is not easily possible in the graphics proposal is API design deficiencies. API design issues have lead to performance issues, attempts to solve which have lead to unsafety issues, which have lead to API usability issues compared to the alternatives. There is a chain of serious issues that must be present for the API to have these problems.
+The sole reason that this is not easily possible in the graphics proposal is API design deficiencies. API design issues have led to performance issues, attempts to solve which have led to unsafety issues, which have led to API usability issues compared to the alternatives. There is a chain of serious issues that must be present for the API to have these problems.
 
 ## Potentially Unsolvable ## {#unsolvability}
 
