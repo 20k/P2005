@@ -263,7 +263,7 @@ These necessary changes could be summed up more simply by saying that a Cairo-li
 
 Fixing P0267 as-is is equivalent to redoing the entire thing and starting again with a different base, with prerequisites on having a standardised linear algebra library (or at minimum a proper colour library), and deep review by relevant experts.
 
-# Misc Errors # {#miscerrors}
+# Misc. Errors # {#miscerrors}
 This section is related to errors with P0267 that I found incidentally while writing this document, notable errors in the reference implementation, or are errors unrelated to the wider theme of the document.
 
 ## Linear Colour ## {#misclincol}
