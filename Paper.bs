@@ -6,7 +6,7 @@ Status: iso/D
 Group: WG21
 URL: none
 Editor: [James Berrow](mailto:icedshot@gmail.com)
-Date: 2019-10-26
+Date: 2019-11-13
 No abstract: true
 Markup Shorthands: markdown yes
 </pre>
