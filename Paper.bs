@@ -1,12 +1,12 @@
 <pre class='metadata'>
-Title: A Brief 2D Graphics Review
-Shortname: None
+Title: The 2D Graphics Proposal: A Brief Review
+Shortname: P2005R0
 Revision: 0
 Status: iso/D
 Group: WG21
 URL: none
 Editor: [James Berrow](mailto:icedshot@gmail.com)
-Date: 2019-11-13
+Date: 2019-12-21
 No abstract: true
 Markup Shorthands: markdown yes
 </pre>
