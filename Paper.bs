@@ -1,8 +1,8 @@
 <pre class='metadata'>
-Title: The 2D Graphics Proposal: A Brief Review
-Shortname: P2005R0
+Title: 2D Graphics: A Brief Review
+Shortname: P2005
 Revision: 0
-Status: iso/D
+Status: iso/P
 Group: WG21
 URL: none
 Editor: [James Berrow](mailto:icedshot@gmail.com)
@@ -10,6 +10,10 @@ Date: 2019-12-21
 No abstract: true
 Markup Shorthands: markdown yes
 </pre>
+
+# Acknowledgments # {#acknowledgments}
+
+The lovely STL for encouraging me to write this paper, helping to filter ideas, providing detailed review, as well as navigating me through the C++ paper submission process.
 
 # Abstract # {#abstract}
 This document aims to review portions of the proposed 2D graphics library ["P0267R10"](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0267r10.pdf), and focuses particularly on its handling of colours, linear algebra, the high level API design, and concerns around performance. There are a number of major API design issues and minor technical faults present in P0267 currently, which hamper current and future functionality, and more concerningly it may be of limited value to beginners. This document is aimed at people who do not have any background in computer graphics but want to understand the issues in depth, and additionally presents a different starting point for jumping off with a future graphics initiative.
